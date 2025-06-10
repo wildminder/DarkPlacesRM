@@ -6,7 +6,10 @@
 #undef false
 
 #ifndef __cplusplus
-typedef enum qboolean_e {false, true} qboolean;
+typedef enum qboolean_e {
+    q_false = 0, // Explicitly assign values
+    q_true = 1
+} qboolean;
 #else
 typedef bool qboolean;
 #endif
@@ -16,8 +19,8 @@ typedef bool qboolean;
 #endif
 
 #ifndef FALSE
-#define FALSE false
-#define TRUE true
+#define FALSE q_false // Now these refer to your safe enum members
+#define TRUE q_true
 #endif
 
 // up / down

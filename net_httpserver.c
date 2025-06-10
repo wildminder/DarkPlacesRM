@@ -1,9 +1,9 @@
 #include "net_httpserver.h"
 #ifdef USE_LIBMICROHTTPD
+#include <microhttpd.h>
 #include "quakedef.h"
 #include "netconn.h"
 #include "fs.h"
-#include <microhttpd.h>
 static cvar_t net_http_server_host = {0, "net_http_server_host","", "External server address"};
 static cvar_t net_http_server = {0, "net_http_server","1", "Internal http server"};
 
@@ -16,7 +16,7 @@ static ssize_t Net_HttpServer_FileReadCallback(void *cls, uint64_t pos, char *bu
 }
 
 static void Net_HttpServer_FileFreeCallback(void *cls) {
-	Con_DPrintf("HTTP response %li finished\n", (long int)cls);
+	Con_DPrintf("HTTP response %p finished\n", (void *)cls);
 	FS_Close((qfile_t *)cls);
 }
 
@@ -60,7 +60,7 @@ static enum MHD_Result Net_HttpServer_Request(void *cls, struct MHD_Connection *
 		return MHD_NO;
 
 	response = MHD_create_response_from_callback(FS_FileSize(pk3_file), 32 * 1024, Net_HttpServer_FileReadCallback, pk3_file, Net_HttpServer_FileFreeCallback);
-	Con_DPrintf("HTTP response %li for %s started\n", (long int)pk3_file, url);
+	Con_DPrintf("HTTP response %p for %s started\n", (void *)pk3_file, url);
 	if (!response) {
 		FS_Close(pk3_file);
 		Con_Printf("libmicrohttpd response failed\n");

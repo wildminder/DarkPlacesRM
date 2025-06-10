@@ -27,7 +27,12 @@
 
 #ifdef WIN32
 # ifndef DONT_USE_SETDLLDIRECTORY
-#  define _WIN32_WINNT 0x0502
+#  ifndef _WIN32_WINNT // Only define if not already defined by system headers
+#   define _WIN32_WINNT 0x0502
+#  elif (_WIN32_WINNT < 0x0502) // Or if defined to something older, upgrade it
+#   undef _WIN32_WINNT
+#   define _WIN32_WINNT 0x0502
+#  endif
 # endif
 # include <direct.h>
 # include <io.h>
@@ -2346,6 +2351,7 @@ static qfile_t *FS_OpenPackedFile (pack_t* pack, int pack_ind)
 		{
 			Con_Printf ("FS_OpenPackedFile: inflate init error (file: %s)\n", pfile->name);
 			FILEDESC_CLOSE(dup_handle);
+			Mem_Free(ztk);
 			Mem_Free(file);
 			return NULL;
 		}

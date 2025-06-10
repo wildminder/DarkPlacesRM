@@ -220,8 +220,8 @@ float beamrepeatscale;
 static void R_DrawLightningBeam_TransparentCallback(const entity_render_t *ent, const rtlight_t *rtlight, int numsurfaces, int *surfacelist)
 {
 	int surfacelistindex;
-	float vertex3f[12*3];
-	float texcoord2f[12*2];
+	float vertex3f[12*3] = {0.0f};     // Initialize
+	float texcoord2f[12*2] = {0.0f};   // Initialize
 
 	RSurf_ActiveCustomEntity(&identitymatrix, &identitymatrix, 0, 0, r_lightningbeam_color_red.value, r_lightningbeam_color_green.value, r_lightningbeam_color_blue.value, 1, 12, vertex3f, texcoord2f, NULL, NULL, NULL, NULL, 6, r_lightningbeamelement3i, r_lightningbeamelement3s, false, false);
 
