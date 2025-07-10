@@ -1,91 +1,90 @@
-#####  DP_MAKE_TARGET autodetection and arch specific variables #####
+# =================================================================================
+# DarkPlacesRM Engine Component Makefile
+#
+# This Makefile is designed to be both:
+# 1. A standalone build system that can auto-detect the user's platform.
+# 2. An integrable component that respects configuration passed from a parent.
+#
+# All auto-detection uses the '?=' operator, allowing variables like CC,
+# DP_MAKE_TARGET, etc., to be overridden by the calling environment.
+# =================================================================================
 
+# VPATH is used in recursive calls from the 'build-obj' directories.
+VPATH := ../../../
+
+# Platform Auto-Detection (if not provided by parent)
 ifndef DP_MAKE_TARGET
-
-# Win32
-ifdef WINDIR
-	DP_MAKE_TARGET=mingw
-else
-
-# UNIXes
-DP_ARCH:=$(shell uname)
-ifneq ($(filter %BSD,$(DP_ARCH)),)
-	DP_MAKE_TARGET=bsd
-else
-ifeq ($(DP_ARCH), Darwin)
-	DP_MAKE_TARGET=macosx
-else
-ifeq ($(DP_ARCH), SunOS)
-	DP_MAKE_TARGET=sunos
-else
-	DP_MAKE_TARGET=linux
-
-endif  # ifeq ($(DP_ARCH), SunOS)
-endif  # ifeq ($(DP_ARCH), Darwin)
-endif  # ifneq ($(filter %BSD,$(DP_ARCH)),)
-endif  # ifdef windir
-endif  # ifndef DP_MAKE_TARGET
-
-# If we're targeting an x86 CPU we want to enable DP_SSE (CFLAGS_SSE and SSE2)
-ifeq ($(DP_MAKE_TARGET), mingw)
-	DP_SSE:=1
-	ifndef MINGWARCH
-		MINGWARCH=i686
+	ifeq ($(OS),Windows_NT)
+		DP_MAKE_TARGET := mingw
+	else
+		UNAME_S := $(shell uname -s)
+		ifeq ($(UNAME_S),Linux)
+			DP_MAKE_TARGET := linux
+		else ifeq ($(UNAME_S),Darwin)
+			DP_MAKE_TARGET := macosx
+		else ifneq ($(filter %BSD,$(UNAME_S)),)
+			DP_MAKE_TARGET := bsd
+		else ifeq ($(UNAME_S),SunOS)
+			DP_MAKE_TARGET := sunos
+		endif
 	endif
-else
-	DP_MACHINE:=$(shell uname -m)
-	ifeq ($(DP_MACHINE),x86_64)
-		DP_SSE:=1
-	else
-	ifeq ($(DP_MACHINE),i686)
-		DP_SSE:=1
-	else
-	ifeq ($(DP_MACHINE),i386)
-		DP_SSE:=1
-	else
-		DP_SSE:=0
-	endif # ifeq ($(DP_MACHINE),i386)
-	endif # ifeq ($(DP_MACHINE),i686)
-	endif # ifeq ($(DP_MACHINE),x86_64)
 endif
 
-# Makefile name
-MAKEFILE=makefile
+# Default Toolchain and Configurable Variables
+CC?=$(CROSSPREFIX)gcc
+STRIP?=strip
+WINDRES?=$(CROSSPREFIX)windres
+SDL_CONFIG?=sdl2-config
 
-# Commands
-ifdef windir
-	CMD_RM=del
-	CMD_CP=copy /y
-	CMD_MKDIR=mkdir
-else
-	CMD_RM=$(CMD_UNIXRM)
-	CMD_CP=$(CMD_UNIXCP)
-	CMD_MKDIR=$(CMD_UNIXMKDIR)
-endif
+# Configurable paths for the Web (Emscripten) build
+HTML_SHELL_FILE?=$(VPATH)rexuiz-in.html
+HTML_PRELOAD_DIR?=$(VPATH)webassets@/
 
-# default targets
-# we don't build the cl target for Vecxis because its badly outdated
-TARGETS_DEBUG=sv-debug sdl-debug
-TARGETS_PROFILE=sv-profile sdl-profile
-TARGETS_RELEASE=sv-release sdl-release
-TARGETS_RELEASE_PROFILE=sv-release-profile sdl-release-profile
-TARGETS_NEXUIZ=sv-nexuiz sdl-nexuiz
-TARGETS_REXUIZ=sv-rexuiz sdl-rexuiz
-
-###### Optional features #####
-OBJ_SDLCD=$(OBJ_CD_COMMON)
-
-DP_VIDEO_OGV?=disabled
+# Default Optimizations and Features (can be overridden)
+CPUOPTIMIZATIONS?=-fno-math-errno -ffinite-math-only -fno-rounding-math -fno-signaling-nans -fno-trapping-math
 DP_VIDEO_CAPTURE?=enabled
+DP_VOIP?=enabled
+DP_LINK_ZLIB?=shared
+DP_LINK_JPEG?=shared
+DP_LINK_PNG?=shared
+DP_LINK_OGGVORBIS?=shared
+DP_LINK_OPUS?=shared
+DP_LINK_VPX?=shared
+DP_LIBMICROHTTPD?=static
+
+# SSE detection (only if not provided)
+ifndef DP_SSE
+	UNAME_M := $(shell uname -m)
+	ifeq ($(filter x86_64 i%86, $(UNAME_M)),)
+		DP_SSE := 0
+	else
+		DP_SSE := 1
+	endif
+endif
+
+# Filesystem Configuration
+DP_FS_USERDIRMODE?=USERDIRMODE_SAVEDGAMES
+ifdef DP_FS_BASEDIR
+    CFLAGS_FS:=-DDP_FS_BASEDIR=\"$(DP_FS_BASEDIR)\"
+endif
+CFLAGS_FS+=-DUSERDIRMODE_PREFERED=$(DP_FS_USERDIRMODE)
+
+# Static variable definitions that depend on the above configs
+ifeq ($(DP_SDL_STATIC),yes)
+	SDLCONFIG_LIBS?=`$(SDL_CONFIG) --static-libs`
+else
+	SDLCONFIG_LIBS?=`$(SDL_CONFIG) --libs`
+endif
+SDLCONFIG_CFLAGS?=`$(SDL_CONFIG) --cflags`
+
 ifeq ($(DP_VIDEO_CAPTURE), enabled)
 	CFLAGS_VIDEO_CAPTURE=-DCONFIG_VIDEO_CAPTURE
-	OBJ_VIDEO_CAPTURE= cap_avi.o cap_ogg.o
+	OBJ_VIDEO_CAPTURE=cap_avi.o cap_ogg.o
 else
 	CFLAGS_VIDEO_CAPTURE=
 	OBJ_VIDEO_CAPTURE=
 endif
 
-DP_VOIP?=enabled
 ifeq ($(DP_VOIP), enabled)
 	CFLAGS_VOIP=-DCONFIG_VOIP
 	OBJ_VOIP=snd_voip.o
@@ -94,329 +93,250 @@ else
 	OBJ_VOIP=
 endif
 
-DP_LINK_ZLIB?=shared
-DP_LINK_JPEG?=shared
-DP_LINK_PNG?=shared
-DP_LINK_ODE?=dlopen
-DP_LINK_CRYPTO?=dlopen
-DP_LINK_CRYPTO_RIJNDAEL?=dlopen
-DP_LINK_OGGVORBIS?=shared
-DP_LINK_OGGZ?=shared
-DP_LINK_FREETYPE?=dlopen
-DP_LINK_OPUS?=shared
+# Object File Lists
+OBJ_SND_COMMON=snd_main.o snd_mem.o snd_mix.o snd_ogg.o snd_wav.o $(OBJ_VOIP)
+OBJ_CD_COMMON=cd_shared.o
 
-# Linux configuration
-ifeq ($(DP_MAKE_TARGET), linux)
-	OBJ_ICON=
-	OBJ_ICON_NEXUIZ=
-	OBJ_ICON_REXUIZ=
+OBJ_CL= \
+	gl_backend.o gl_rmain.o gl_textures.o cl_input.o r_shadow.o \
+	sbar.o cl_particles.o cl_screen.o cl_video.o clvm_cmds.o gl_draw.o \
+	gl_rsurf.o meshqueue.o r_explosion.o r_lerpanim.o r_lightning.o \
+	r_modules.o r_sky.o r_sprites.o vid_shared.o vid_touchscreen.o \
+	ft2.o csprogs.o cl_parse.o cl_main.o cl_demo.o keys.o timedemo.o \
+	wad.o cl_dyntexture.o cl_collision.o discord.o dpvsimpledecode.o \
+	view.o net_file_client.o
 
-	LDFLAGS_SV=$(LDFLAGS_LINUXSV)
-	LDFLAGS_SDL=$(LDFLAGS_LINUXSDL)
+OBJ_COMMON= \
+	palette.o crypto.o host.o mathlib.o image.o sv_main.o world.o bih.o \
+	cmd.o collision.o common.o console.o curves.o cvar.o filematch.o \
+	fractalnoise.o fs.o utf8lib.o hmac.o host_cmd.o image_png.o jpeg.o \
+	lhnet.o libcurl.o matrixlib.o mdfour.o \
+	mod_skeletal_animatevertices_sse.o mod_skeletal_animatevertices_generic.o \
+	model_alias.o model_brush.o model_shared.o model_sprite.o \
+	net_httpserver.o netconn.o polygon.o protocol.o prvm_cmds.o prvm_edict.o \
+	prvm_exec.o random.o sha256.o siphash.o stats.o sv_demo.o sv_move.o \
+	sv_phys.o sv_user.o svbsp.o svvm_cmds.o sys_shared.o zone.o slre.o \
+	model_compile.o net_file_server.o model_assimp.c
 
-	EXE_SV=$(EXE_UNIXSV)
-	EXE_SDL=$(EXE_UNIXSDL)
-	EXE_SVNEXUIZ=$(EXE_UNIXSVNEXUIZ)
-	EXE_SDLNEXUIZ=$(EXE_UNIXSDLNEXUIZ)
-	EXE_SVREXUIZ=$(EXE_UNIXSVREXUIZ)
-	EXE_SDLREXUIZ=$(EXE_UNIXSDLREXUIZ)
-endif
-
-# Android configuration
-ifeq ($(DP_MAKE_TARGET), android)
-	LDFLAGS_SDL=$(LDFLAGS_ANDROIDSDL)
-endif
-
-# Mac OS X configuration
-ifeq ($(DP_MAKE_TARGET), macosx)
-	OBJ_ICON=
-	OBJ_ICON_NEXUIZ=
-	OBJ_ICON_REXUIZ=
-
-	LDFLAGS_SV=$(LDFLAGS_MACOSXSV)
-	LDFLAGS_SDL=$(LDFLAGS_MACOSXSDL)
-
-	EXE_SV=$(EXE_UNIXSV)
-	EXE_SDL=$(EXE_UNIXSDL)
-	EXE_SVNEXUIZ=$(EXE_UNIXSVNEXUIZ)
-	EXE_SDLNEXUIZ=$(EXE_UNIXSDLNEXUIZ)
-	EXE_SVREXUIZ=$(EXE_UNIXSVREXUIZ)
-	EXE_SDLREXUIZ=$(EXE_UNIXSDLREXUIZ)
-
-	ifeq ($(word 2, $(filter -arch, $(CC))), -arch)
-		CFLAGS_MAKEDEP=
-	endif
-
-	# we don't build the CL by default because it uses deprecated
-	# and not-implemented-in-64bit Carbon
-	TARGETS_DEBUG=sv-debug sdl-debug
-	TARGETS_PROFILE=sv-profile sdl-profile
-	TARGETS_RELEASE=sv-release sdl-release
-	TARGETS_RELEASE_PROFILE=sv-release-profile sdl-release-profile
-	TARGETS_NEXUIZ=sv-nexuiz sdl-nexuiz
-	TARGETS_REXUIZ=sv-rexuiz sdl-rexuiz
-endif
-
-# SunOS configuration (Solaris)
-ifeq ($(DP_MAKE_TARGET), sunos)
-	OBJ_ICON=
-	OBJ_ICON_NEXUIZ=
-	OBJ_ICON_REXUIZ=
-
-	CFLAGS_EXTRA=$(CFLAGS_SUNOS)
-
-	LDFLAGS_SV=$(LDFLAGS_SUNOSSV)
-	LDFLAGS_SDL=$(LDFLAGS_SUNOSSDL)
-
-	EXE_SV=$(EXE_UNIXSV)
-	EXE_SDL=$(EXE_UNIXSDL)
-	EXE_SVNEXUIZ=$(EXE_UNIXSVNEXUIZ)
-	EXE_SDLNEXUIZ=$(EXE_UNIXSDLNEXUIZ)
-	EXE_SVREXUIZ=$(EXE_UNIXSVREXUIZ)
-	EXE_SDLREXUIZ=$(EXE_UNIXSDLREXUIZ)
-endif
-
-# BSD configuration
-ifeq ($(DP_MAKE_TARGET), bsd)
-	OBJ_ICON=
-	OBJ_ICON_NEXUIZ=
-	OBJ_ICON_REXUIZ=
-
-	LDFLAGS_SV=$(LDFLAGS_BSDSV)
-	LDFLAGS_SDL=$(LDFLAGS_BSDSDL)
-
-	EXE_SV=$(EXE_UNIXSV)
-	EXE_SDL=$(EXE_UNIXSDL)
-	EXE_SVNEXUIZ=$(EXE_UNIXSVNEXUIZ)
-	EXE_SDLNEXUIZ=$(EXE_UNIXSDLNEXUIZ)
-	EXE_SVREXUIZ=$(EXE_UNIXSVREXUIZ)
-	EXE_SDLREXUIZ=$(EXE_UNIXSDLREXUIZ)
-endif
-
-CFLAGS_WARNINGS=-Wall -Wno-ignored-optimization-argument -Wno-unused-command-line-argument -Wno-missing-field-initializers -Wold-style-definition -Wstrict-prototypes -Wsign-compare -Wdeclaration-after-statement -Wmissing-prototypes
+OBJ_MENU=menu.o mvm_cmds.o
 
 ifeq ($(DP_MAKE_TARGET), mingw)
-	TARGET=$(MINGWARCH)-w64-mingw32
-	CC=$(TARGET)-gcc
-	WINDRES=$(TARGET)-windres
+	OBJ_SV_THREAD=thread_win.o
+else
+	OBJ_SV_THREAD=thread_pthread.o
+endif
 
-	OBJ_ICON=darkplaces.o
-	OBJ_ICON_NEXUIZ=nexuiz.o
+# builddate.c is not compiled to a .o because it should be recompiled every time
+OBJ_SV= builddate.c sys_sv.o $(OBJ_SV_THREAD) $(OBJ_COMMON)
+OBJ_SDL= builddate.c sys_sdl.o vid_sdl.o thread_sdl.o $(OBJ_MENU) $(OBJ_SND_COMMON) snd_sdl.o $(OBJ_CD_COMMON) $(OBJ_VIDEO_CAPTURE) $(OBJ_COMMON) $(OBJ_CL)
+
+# Compilation Flags
+CFLAGS_COMMON=$(CFLAGS_MAKEDEP) $(CFLAGS_FS) $(CFLAGS_WARNINGS) $(CFLAGS_LIBZ) $(CFLAGS_LIBJPEG) $(CFLAGS_LIBPNG) $(CFLAGS_NET) $(CFLAGS_LIBMICROHTTPD) $(CFLAGS_VOIP) -D_FILE_OFFSET_BITS=64 -D__KERNEL_STRICT_NAMES -I.
+CFLAGS_CLIENT=-DCONFIG_MENU -DCONFIG_CD $(CFLAGS_VIDEO_CAPTURE) $(CFLAGS_OGGVORBIS) $(CFLAGS_OPUS) $(CFLAGS_FREETYPE) $(CFLAGS_GL) $(CFLAGS_VPX)
+CFLAGS_SERVER=-DCONFIG_SV
+CFLAGS_DEBUG=-ggdb -fsanitize=address,bounds
+CFLAGS_PROFILE=-g -pg -ggdb -fprofile-arcs
+CFLAGS_RELEASE=
+CFLAGS_RELEASE_PROFILE=-fbranch-probabilities
+CFLAGS_SDL=
+CFLAGS_WARNINGS=-Wall -Wno-ignored-optimization-argument -Wno-unused-command-line-argument -Wno-missing-field-initializers -Wold-style-definition -Wstrict-prototypes -Wsign-compare -Wdeclaration-after-statement -Wmissing-prototypes
+
+ifeq ($(DP_SSE),1)
+	CFLAGS_SSE=-msse
+	CFLAGS_SSE2=-msse2
+else
+	CFLAGS_SSE=
+	CFLAGS_SSE2=
+endif
+
+OPTIM_DEBUG=$(CPUOPTIMIZATIONS)
+OPTIM_RELEASE=-O3 -fno-strict-aliasing $(CPUOPTIMIZATIONS)
+
+# Linker Flags
+LDFLAGS_DEBUG=-g -ggdb $(OPTIM_DEBUG) -DSVNREVISION=`{ test -d .svn && svnversion; } || { test -d .git && git describe --always; } || echo -` -DBUILDTYPE=debug -fsanitize=address,bounds
+LDFLAGS_PROFILE=-g -pg -fprofile-arcs $(OPTIM_RELEASE) -DSVNREVISION=`{ test -d .svn && svnversion; } || { test -d .git && git describe --always; } || echo -` -DBUILDTYPE=profile
+LDFLAGS_RELEASE=$(OPTIM_RELEASE) -DSVNREVISION=`{ test -d .svn && svnversion; } || { test -d .git && git describe --always; } || echo -` -DBUILDTYPE=release
+
+LDFLAGS_COMMONSV=$(LIB_ODE) $(LIB_Z) $(LIB_JPEG) $(LIB_PNG) $(LIB_CRYPTO) $(LIB_CRYPTO_RIJNDAEL) $(LIB_LIBMICROHTTPD)
+LDFLAGS_COMMONCL=$(LIB_OGGVORBIS) $(LIB_OPUS) $(LIB_FREETYPE) $(LIB_GL) $(LIB_VPX)
+
+# Platform-Specific Executable Names and Linker Flags
+# Default to Unix-like
+EXE_SV?=rexuiz-dedicated
+EXE_SDL?=rexuiz-sdl
+LDFLAGS_UNIXCOMMON=-lm $(LDFLAGS_COMMONSV)
+LDFLAGS_UNIXSDL=$(SDLCONFIG_LIBS) $(LDFLAGS_COMMONCL)
+
+# Linux
+ifeq ($(DP_MAKE_TARGET), linux)
+	LDFLAGS_SV=$(LDFLAGS_UNIXCOMMON) -lrt -ldl -pthread
+	LDFLAGS_SDL=$(LDFLAGS_UNIXCOMMON) -lrt -ldl $(LDFLAGS_UNIXSDL)
+endif
+
+# Android
+ifeq ($(DP_MAKE_TARGET), android)
+	LDFLAGS_SDL=$(LDFLAGS_UNIXCOMMON) $(LDFLAGS_UNIXSDL)
+endif
+
+# Mac OS X
+ifeq ($(DP_MAKE_TARGET), macosx)
+	LDFLAGS_SV=$(LDFLAGS_UNIXCOMMON) -ldl
+	LDFLAGS_SDL=$(LDFLAGS_UNIXCOMMON) $(LDFLAGS_COMMONCL) -ldl -framework IOKit $(SDLCONFIG_LIBS)
+endif
+
+# Windows (MinGW)
+ifeq ($(DP_MAKE_TARGET), mingw)
+	MINGWARCH ?= i686
+	EXE_SV=rexuiz-dedicated-$(MINGWARCH).exe
+	EXE_SDL=rexuiz-sdl-$(MINGWARCH).exe
 	OBJ_ICON_REXUIZ=rexuiz.o
-
-	LDFLAGS_SV=$(LDFLAGS_WINSV)
-	LDFLAGS_SDL=$(LDFLAGS_WINSDL)
-
-	EXE_SV=$(EXE_WINSV)-$(MINGWARCH).exe
-	EXE_SDL=$(EXE_WINSDL)-$(MINGWARCH).exe
-	EXE_SVNEXUIZ=$(EXE_WINSVNEXUIZ)-$(MINGWARCH).exe
-	EXE_SDLNEXUIZ=$(EXE_WINSDLNEXUIZ)-$(MINGWARCH).exe
-	EXE_SVREXUIZ=$(EXE_WINSVREXUIZ)-$(MINGWARCH).exe
-	EXE_SDLREXUIZ=$(EXE_WINSDLREXUIZ)-$(MINGWARCH).exe
-
 	ifeq ($(MINGWARCH), i686)
-		CPUOPTIMIZATIONS=-march=i686 -fno-math-errno -ffinite-math-only -fno-rounding-math -fno-signaling-nans -fno-trapping-math
-		LDFLAGS_WINCOMMON=-Wl,--large-address-aware
-	else
-		CPUOPTIMIZATIONS=
-		LDFLAGS_WINCOMMON=
+		LDFLAGS_WINCOMMON:=-Wl,--large-address-aware
 	endif
+	LDFLAGS_SV=-static $(LDFLAGS_WINCOMMON) -mconsole -lwinmm -lws2_32 $(LDFLAGS_COMMONSV)
+	LDFLAGS_SDL=-static $(LDFLAGS_WINCOMMON) $(SDLCONFIG_LIBS) -lwinmm -lws2_32 $(LDFLAGS_COMMONSV) $(LDFLAGS_COMMONCL)
+endif
+
+# Library Linking Flags (determined by DP_LINK_* variables)
+ifeq ($(DP_VIDEO_CAPTURE), enabled)
+	OGGVORBIS_PKGS = ogg vorbis vorbisenc vorbisfile theora theoraenc
+else
+	OGGVORBIS_PKGS = ogg vorbis vorbisfile
+endif
+
+ifeq ($(DP_LINK_OGGVORBIS), static)
+	CFLAGS_OGGVORBIS=`pkg-config --cflags $(OGGVORBIS_PKGS)` -DLINK_TO_LIBVORBIS
+	LIB_OGGVORBIS=`pkg-config --static --libs $(OGGVORBIS_PKGS)`
 endif
 
 ifeq ($(DP_LIBMICROHTTPD),static)
 	CFLAGS_LIBMICROHTTPD=-DUSE_LIBMICROHTTPD `pkg-config --cflags libmicrohttpd`
 	LIB_LIBMICROHTTPD=`pkg-config --static --libs libmicrohttpd`
 endif
-ifeq ($(DP_LIBMICROHTTPD),shared)
-	CFLAGS_LIBMICROHTTPD=-DUSE_LIBMICROHTTPD `pkg-config --cflags libmicrohttpd`
-	LIB_LIBMICROHTTPD=`pkg-config --libs libmicrohttpd`
-endif
-
-ifdef DP_GLES2
-	CFLAGS_GL=-DUSE_GLES2
-	LIB_GL=-lGLESv2
-endif
-
-# set these to "" if you want to use dynamic loading instead
-# zlib
 ifeq ($(DP_LINK_ZLIB), static)
 	CFLAGS_LIBZ=`pkg-config --cflags zlib`
-	LIB_Z=-lz `pkg-config --static --libs zlib`
+	LIB_Z=`pkg-config --static --libs zlib`
 endif
-ifeq ($(DP_LINK_ZLIB), shared)
-	CFLAGS_LIBZ=`pkg-config --cflags zlib`
-	LIB_Z=-lz `pkg-config --libs zlib`
-endif
-
-# jpeg
 ifeq ($(DP_LINK_JPEG), static)
 	CFLAGS_LIBJPEG=`pkg-config --cflags libjpeg`
-	LIB_JPEG= `pkg-config --static --libs libjpeg`
-endif
-ifeq ($(DP_LINK_JPEG), shared)
-	CFLAGS_LIBJPEG=`pkg-config --cflags libjpeg`
-	LIB_JPEG= `pkg-config --libs libjpeg`
-endif
-
-# png
-ifeq ($(DP_LINK_PNG), shared)
-	CFLAGS_LIBPNG=`pkg-config --cflags libpng`
-	LIB_PNG=`pkg-config --libs libpng`
+	LIB_JPEG=`pkg-config --static --libs libjpeg`
 endif
 ifeq ($(DP_LINK_PNG), static)
 	CFLAGS_LIBPNG=`pkg-config --cflags libpng`
 	LIB_PNG=`pkg-config --static --libs libpng`
 endif
-
-# ode
-ifeq ($(DP_LINK_ODE), shared)
-	ODE_CONFIG?=ode-config
-	LIB_ODE=`$(ODE_CONFIG) --libs`
-	CFLAGS_ODE=`$(ODE_CONFIG) --cflags` -DUSEODE -DLINK_TO_LIBODE
-endif
-ifeq ($(DP_LINK_ODE), static)
-	ODE_CONFIG?=ode-config
-	LIB_ODE=`$(ODE_CONFIG) --static --libs`
-	CFLAGS_ODE=`$(ODE_CONFIG) --cflags` -DUSEODE -DLINK_TO_LIBODE
-endif
-ifeq ($(DP_LINK_ODE), dlopen)
-	CFLAGS_ODE= -DUSEODE
-endif
-
-# ogg and vorbis
-ifeq ($(DP_LINK_OGGVORBIS), static)
-ifeq ($(DP_VIDEO_CAPTURE), enabled)
-ifeq ($(DP_VIDEO_OGV), enabled)
-	LIB_OGGVORBIS=`pkg-config --static --libs ogg vorbis vorbisfile theora vorbisenc theoraenc oggz`
-	CFLAGS_OGGVORBIS=`pkg-config --cflags ogg vorbis vorbisfile theora vorbisenc theoraenc oggz` -DLINK_TO_LIBVORBIS -DCONFIG_VIDEO_OGV
-else
-	LIB_OGGVORBIS=`pkg-config --static --libs ogg vorbis vorbisfile theora vorbisenc theoraenc`
-	CFLAGS_OGGVORBIS=`pkg-config --cflags ogg vorbis vorbisfile theora vorbisenc theoraenc` -DLINK_TO_LIBVORBIS
-endif
-else
-	LIB_OGGVORBIS=`pkg-config --static --libs ogg vorbis vorbisfile`
-	CFLAGS_OGGVORBIS=`pkg-config --cflags ogg vorbis vorbisfile` -DLINK_TO_LIBVORBIS
-endif
-endif
-ifeq ($(DP_LINK_OGGVORBIS), shared)
-ifeq ($(DP_VIDEO_CAPTURE), enabled)
-ifeq ($(DP_VIDEO_OGV), enabled)
-	LIB_OGGVORBIS=`pkg-config --libs ogg vorbis vorbisfile theora vorbisenc theoraenc oggz`
-	CFLAGS_OGGVORBIS=`pkg-config --cflags ogg vorbis vorbisfile theora vorbisenc theoraenc oggz` -DLINK_TO_LIBVORBIS -DCONFIG_VIDEO_OGV
-else
-	LIB_OGGVORBIS=`pkg-config --libs ogg vorbis vorbisfile theora vorbisenc theoraenc`
-	CFLAGS_OGGVORBIS=`pkg-config --cflags ogg vorbis vorbisfile theora vorbisenc theoraenc` -DLINK_TO_LIBVORBIS
-endif
-else
-	LIB_OGGVORBIS=`pkg-config --libs ogg vorbis vorbisfile`
-	CFLAGS_OGGVORBIS=`pkg-config --cflags ogg vorbis vorbisfile` -DLINK_TO_LIBVORBIS
-endif
-endif
-
-# opus
-ifeq ($(DP_VOIP), enabled)
-CFLAGS_OPUS=`pkg-config --cflags opus`
 ifeq ($(DP_LINK_OPUS), static)
-LIB_OPUS=`pkg-config --static --libs opus`
-else
-LIB_OPUS=`pkg-config --libs opus`
+	CFLAGS_OPUS=`pkg-config --cflags opus`
+	LIB_OPUS=`pkg-config --static --libs opus`
 endif
-else
-LIB_OPUS=
-CFLAGS_OPUS=
-endif
-
-# vpx
-ifeq ($(DP_VIDEO_CAPTURE), enabled)
-ifeq ($(DP_LINK_VPX),shared)
-CFLAGS_VPX=`pkg-config --cflags vpx` -DLINK_TO_VPX
-LIB_VPX=`pkg-config --libs vpx`
-endif
-ifeq ($(DP_LINK_VPX),static)
-CFLAGS_VPX=`pkg-config --cflags vpx` -DLINK_TO_VPX
-LIB_VPX=`pkg-config --static --libs vpx`
-endif
-else
-CFLAGS_VPX=
-LIB_VPX=
+ifeq ($(DP_LINK_VPX), static)
+	CFLAGS_VPX=`pkg-config --cflags vpx` -DLINK_TO_VPX
+	LIB_VPX=`pkg-config --static --libs vpx`
 endif
 
-# d0_blind_id
-ifeq ($(DP_LINK_CRYPTO), shared)
-	LIB_CRYPTO=-ld0_blind_id
-	CFLAGS_CRYPTO=-DLINK_TO_CRYPTO
-endif
-ifeq ($(DP_LINK_CRYPTO), static)
-	LIB_CRYPTO=-ld0_blind_id
-	CFLAGS_CRYPTO=-DLINK_TO_CRYPTO
-endif
+# Makefile Rules & Targets
+.PHONY: all clean clean-profile help sv-rexuiz sdl-rexuiz android-rexuiz html-rexuiz release
 
-ifeq ($(DP_LINK_CRYPTO_RIJNDAEL), shared)
-	LIB_CRYPTO_RIJNDAEL=-ld0_rijndael
-	CFLAGS_CRYPTO_RIJNDAEL=-DLINK_TO_CRYPTO_RIJNDAEL
-endif
-ifeq ($(DP_LINK_CRYPTO_RIJNDAEL), static)
-	LIB_CRYPTO_RIJNDAEL=-ld0_rijndael
-	CFLAGS_CRYPTO_RIJNDAEL=-DLINK_TO_CRYPTO_RIJNDAEL
-endif
+# Default to release build
+all: release
 
-#freetype
-ifeq ($(DP_LINK_FREETYPE), shared)
-	LIB_FREETYPE=`pkg-config --libs freetype2`
-	CFLAGS_FREETYPE=-DLINK_TO_FREETYPE `pkg-config --cflags freetype2`
-endif
-ifeq ($(DP_LINK_FREETYPE), static)
-	LIB_FREETYPE=`pkg-config --static --libs freetype2`
-	CFLAGS_FREETYPE=-DLINK_TO_FREETYPE `pkg-config --cflags freetype2`
-endif
+release: sv-rexuiz sdl-rexuiz
 
+help:
+	@echo "DarkPlacesRM Standalone/Component Build System"
+	@echo
+	@echo "As a standalone project, 'make' or 'make all' will build release binaries."
+	@echo "Available targets: sv-rexuiz, sdl-rexuiz, android-rexuiz, html-rexuiz, clean"
+	@echo
+	@echo "This Makefile also works as a component. Configuration variables"
+	@echo "(like CC, DP_MAKE_TARGET, etc.) can be passed from a parent Makefile."
 
-##### Extra CFLAGS #####
+# Main entry points called by the root Makefile
+sv-rexuiz:
+	$(MAKE) bin-release EXE='$(EXE_SV)' CFLAGS_FEATURES='$(CFLAGS_SERVER)' LDFLAGS_COMMON='$(LDFLAGS_SV)' LEVEL=1
+sdl-rexuiz:
+	$(MAKE) bin-release EXE='$(EXE_SDL)' CFLAGS_FEATURES='$(CFLAGS_CLIENT)' CFLAGS_SDL='$(SDLCONFIG_CFLAGS)' LDFLAGS_COMMON='$(LDFLAGS_SDL)' LEVEL=1
 
-DP_FS_USERDIRMODE?=USERDIRMODE_SAVEDGAMES
-DP_FS_BASEDIR_NEXUIZ?=/usr/share/games/nexuiz
-CFLAGS_MAKEDEP?=-MMD
+# Android Target
+android-rexuiz:
+	$(MAKE) bin-release-so EXE='librexuiz-android.so' CFLAGS_FEATURES='$(CFLAGS_CLIENT)' CFLAGS_SDL='$(SDLCONFIG_CFLAGS)' LDFLAGS_COMMON='$(LDFLAGS_SDL)' LEVEL=1
 
-ifeq ($(DP_MAKE_TARGET), linux)
-ifndef DP_FS_BASEDIR
-ifeq ($(ISNEXUIZ), 1)
-	DP_FS_BASEDIR=$(DP_FS_BASEDIR_NEXUIZ)
-endif
-endif
-endif
+# Web/HTML Target
+html-rexuiz:
+	$(MAKE) bin-release-nostrip EXE='rexuiz.html' CFLAGS_FEATURES='$(CLIENT)' CFLAGS_SDL='$(SDLCONFIG_CFLAGS)' LDFLAGS_COMMON='$(LDFLAGS_SDL)' LEVEL=1
 
-ifdef DP_FS_BASEDIR
-	CFLAGS_FS=-DDP_FS_BASEDIR=\"$(DP_FS_BASEDIR)\"
-else
-	CFLAGS_FS=
-endif
+# Recursive Build Logic
+# These targets create the build directory and call make recursively
+bin-release:
+	@if [ "$(LEVEL)" != 1 ]; then $(MAKE) help; false; fi
+	@echo "========== $(EXE) (release) =========="
+	$(MAKE) prepare BUILD_DIR=build-obj/release/$(EXE)
+	$(MAKE) -C build-obj/release/$(EXE) $(EXE) \
+		CFLAGS='$(CFLAGS_COMMON) $(CFLAGS_SDL) $(CFLAGS_FEATURES) $(CFLAGS_EXTRA) $(CFLAGS_RELEASE) $(OPTIM_RELEASE)'\
+		LDFLAGS='$(LDFLAGS_RELEASE) $(LDFLAGS_COMMON)' LEVEL=2
+	$(STRIP) $(EXE)
 
-CFLAGS_FS+=-DUSERDIRMODE_PREFERED=$(DP_FS_USERDIRMODE)
+bin-release-so:
+	@if [ "$(LEVEL)" != 1 ]; then $(MAKE) help; false; fi
+	@echo "========== $(EXE) (release shared object) =========="
+	$(MAKE) prepare BUILD_DIR=build-obj/release/$(EXE)
+	$(MAKE) -C build-obj/release/$(EXE) $(EXE) \
+		CFLAGS='$(CFLAGS_COMMON) $(CFLAGS_SDL) $(CFLAGS_FEATURES) $(CFLAGS_EXTRA) $(CFLAGS_RELEASE) $(OPTIM_RELEASE)'\
+		LDFLAGS='-shared $(LDFLAGS_RELEASE) $(LDFLAGS_COMMON)' LEVEL=2
+	$(STRIP) $(EXE)
 
-ifdef DP_FS_FORCE_NOHOME
-	CFLAGS_FS+=-DFS_FORCE_NOHOME
-endif
+bin-release-nostrip:
+	@if [ "$(LEVEL)" != 1 ]; then $(MAKE) help; false; fi
+	@echo "========== $(EXE) (release nostrip) =========="
+	$(MAKE) prepare BUILD_DIR=build-obj/release/$(EXE)
+	$(MAKE) -C build-obj/release/$(EXE) $(EXE) \
+		CFLAGS='$(CFLAGS_COMMON) $(CFLAGS_SDL) $(CFLAGS_FEATURES) $(CFLAGS_EXTRA) $(CFLAGS_RELEASE) $(OPTIM_RELEASE)'\
+		LDFLAGS='$(LDFLAGS_RELEASE) $(LDFLAGS_COMMON)' LEVEL=2
 
-CFLAGS_NET=
-# Systems without IPv6 support should uncomment this:
-#CFLAGS_NET+=-DNOSUPPORTIPV6
+prepare:
+	@mkdir -p $(BUILD_DIR)
+	@cp -f Makefile $(BUILD_DIR)/
 
-##### GNU Make specific definitions #####
+# Compilation and Linking Rules (executed inside build-obj)
+DO_CC = $(CC) $(CFLAGS) -c $< -o $@
+DO_LD = $(CC) $(CFLAGS_WARNINGS) $(CPUOPTIMIZATIONS) -o ../../../$@ $^ $(LDFLAGS)
 
-DO_LD=$(CC) $(CFLAGS_WARNINGS) $(CPUOPTIMIZATIONS) -o ../../../$@ $^ $(LDFLAGS)
+mod_skeletal_animatevertices_sse.o: mod_skeletal_animatevertices_sse.c
+	@if [ "$(LEVEL)" != 2 ]; then $(MAKE) help; false; fi
+	$(DO_CC) $(CFLAGS_SSE)
 
+rexuiz.o: %.o : %.rc
+	@if [ "$(LEVEL)" != 2 ]; then $(MAKE) help; false; fi
+	$(WINDRES) -o $@ $<
 
-##### Definitions shared by all makefiles #####
-include makefile.inc
+.c.o:
+	@if [ "$(LEVEL)" != 2 ]; then $(MAKE) help; false; fi
+	$(DO_CC)
 
+$(EXE_SV): $(OBJ_SV) $(OBJ_ICON_REXUIZ)
+	@if [ "$(LEVEL)" != 2 ]; then $(MAKE) help; false; fi
+	$(DO_LD)
 
-##### Dependency files #####
+$(EXE_SDL): $(OBJ_SDL) $(OBJ_ICON_REXUIZ)
+	@if [ "$(LEVEL)" != 2 ]; then $(MAKE) help; false; fi
+	$(DO_LD)
 
+librexuiz-android.so: $(OBJ_SDL) $(OBJ_ICON_REXUIZ)
+	@if [ "$(LEVEL)" != 2 ]; then $(MAKE) help; false; fi
+	$(DO_LD)
+
+rexuiz.html: $(OBJ_SDL) $(OBJ_ICON_REXUIZ)
+	@if [ "$(LEVEL)" != 2 ]; then $(MAKE) help; false; fi
+	$(DO_LD) --shell-file $(HTML_SHELL_FILE) --preload-file $(HTML_PRELOAD_DIR)
+
+# Clean Targets
+clean:
+	@echo "Cleaning DarkPlacesRM object files..."
+	-rm -rf build-obj/ *.exe *.so *.html
+	-rm -f rexuiz-sdl rexuiz-dedicated
+
+clean-profile: clean
+	-rm -f *.gcda *.gcno
+
+# Dependency files
 -include *.d
-
-# hack to deal with no-longer-needed .h files
-%.h:
-	@echo
-	@echo "NOTE: file $@ mentioned in dependencies missing, continuing..."
-	@echo "HINT: consider 'make clean'"
-	@echo
