@@ -1613,6 +1613,7 @@ void CL_Stop_f(void);
 void CL_Record_f(void);
 void CL_PlayDemo_f(void);
 void CL_TimeDemo_f(void);
+void CL_RewindDemo_f(void);
 
 //
 // cl_parse.c
@@ -1807,8 +1808,6 @@ typedef struct r_refdef_view_s
 
 	// whether to call R_ClearScreen before rendering stuff
 	qboolean clear;
-	// if true, don't clear or do any post process effects (bloom, etc)
-	qboolean isoverlay;
 	// if true, this is the MAIN view (which is, after CSQC, copied into the scene for use e.g. by r_speeds 1, showtex, prydon cursor)
 	qboolean ismain;
 
@@ -1925,6 +1924,7 @@ typedef struct r_refdef_s
 	float fogplane[4];
 	float fogplaneviewdist;
 	qboolean fogplaneviewabove;
+	qboolean inliquid;
 	float fogheightfade;
 	float fogcolor[3];
 	float fogrange;
@@ -1974,6 +1974,9 @@ typedef struct r_refdef_s
 	// rendering stats for r_speeds display
 	// (these are incremented in many places)
 	int stats[r_stat_count];
+	qboolean skypossible;
+	qboolean skyrendering;
+	texture_t *skytexture;
 }
 r_refdef_t;
 

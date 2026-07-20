@@ -45,6 +45,7 @@ cvar_t sv_worldmessage = {CVAR_READONLY, "sv_worldmessage", "", "title of curren
 cvar_t sv_worldname = {CVAR_READONLY, "sv_worldname", "", "name of current worldmodel"};
 cvar_t sv_worldnamenoextension = {CVAR_READONLY, "sv_worldnamenoextension", "", "name of current worldmodel without extension"};
 cvar_t sv_worldbasename = {CVAR_READONLY, "sv_worldbasename", "", "name of current worldmodel without maps/ prefix or extension"};
+cvar_t sv_worldfogs = {CVAR_READONLY, "sv_worldfogs", "0", "amount of fog areas on worldmodel"};
 cvar_t sv_use_default_spawnflags = {0, "sv_use_default_spawnflags", "1", "Use default Quake spawnflags (256, 512, 1024, 2048)"};
 
 cvar_t sv_disablenotify = {0, "sv_disablenotify", "1", "suppress broadcast prints when certain cvars are changed (CVAR_NOTIFY flag in engine code)"};
@@ -448,6 +449,7 @@ void SV_Init (void)
 	Cvar_RegisterVariable(&sv_worldname);
 	Cvar_RegisterVariable(&sv_worldnamenoextension);
 	Cvar_RegisterVariable(&sv_worldbasename);
+	Cvar_RegisterVariable(&sv_worldfogs);
 	Cvar_RegisterVariable(&sv_use_default_spawnflags);
 
 	Cvar_RegisterVariable (&csqc_progname);
@@ -957,6 +959,7 @@ void SV_SendServerinfo (client_t *client)
 	{
 		char demofile[MAX_OSPATH];
 		char ipaddress[MAX_QPATH];
+		char timestr[128];
 
 		// start a new demo file
 		LHNETADDRESS_ToString(&(client->netconnection->peeraddress), ipaddress, sizeof(ipaddress), true);
@@ -964,7 +967,7 @@ void SV_SendServerinfo (client_t *client)
 			if(!isalnum(ipaddress[i]))
 				ipaddress[i] = '-';
 		Cvar_LockThreadMutex();
-		dpsnprintf (demofile, sizeof(demofile), "%s_%s_%d_%s.dem", Sys_TimeString (sv_autodemo_perclient_nameformat.string), sv.worldbasename, PRVM_NUM_FOR_EDICT(client->edict), ipaddress);
+		dpsnprintf (demofile, sizeof(demofile), "%s_%s_%d_%s.dem", Sys_TimeString (sv_autodemo_perclient_nameformat.string, timestr, sizeof(timestr)), sv.worldbasename, PRVM_NUM_FOR_EDICT(client->edict), ipaddress);
 		Cvar_UnlockThreadMutex();
 		SV_StartDemoRecording(client, demofile, -1);
 		SV_WriteNetnameIntoDemo(client);
@@ -1861,12 +1864,14 @@ static void SV_WriteEntitiesToClient(client_t *client, prvm_edict_t *clent, size
 	// get eye location
 	sv.writeentitiestoclient_cliententitynumber = PRVM_EDICT_TO_PROG(clent); // LordHavoc: for comparison purposes
 	camera = PRVM_EDICT_NUM( client->clientcamera );
+	if(PRVM_serveredictedict(client->edict, clientdataent))
+		clent = PRVM_EDICT_NUM(PRVM_serveredictedict(client->edict, clientdataent));
 	VectorAdd(PRVM_serveredictvector(camera, origin), PRVM_serveredictvector(clent, view_ofs), eye);
 	// get the PVS values for the eye location, later FatPVS calls will merge
 	if (sv.worldmodel && sv.worldmodel->brush.FatPVS && sv.worldmodel->brush.num_pvsclusterbytes)
 	{
 		if (sv.writeentitiestoclient_pvsbytes != sv.worldmodel->brush.num_pvsclusterbytes) {
-			Mem_Free(sv.writeentitiestoclient_pvs);
+			if (sv.writeentitiestoclient_pvs) Mem_Free(sv.writeentitiestoclient_pvs);
 			sv.writeentitiestoclient_pvs = Mem_Alloc(sv_mempool, sv.worldmodel->brush.num_pvsclusterbytes);
 			sv.writeentitiestoclient_pvsbytes = sv.worldmodel->brush.num_pvsclusterbytes;
 		}
@@ -3448,6 +3453,10 @@ void SV_SpawnServer (const char *server)
 	Cvar_SetQuick(&sv_worldname, sv.worldname);
 	Cvar_SetQuick(&sv_worldnamenoextension, sv.worldnamenoextension);
 	Cvar_SetQuick(&sv_worldbasename, sv.worldbasename);
+	if (worldmodel->brush.isq3bsp)
+		Cvar_SetValueQuick(&sv_worldfogs, worldmodel->brushq3.num_fogs);
+	else
+		Cvar_SetValueQuick(&sv_worldfogs, 0);
 	Cvar_LockThreadMutex();
 	sv.protocol = Protocol_EnumForName(sv_protocolname.string);
 	if (sv.protocol == PROTOCOL_UNKNOWN)

@@ -2173,6 +2173,7 @@ static void CL_Locs_Save_f(void)
 	cl_locnode_t *loc;
 	qfile_t *outfile;
 	char locfilename[MAX_QPATH];
+	char timestr[128];
 	if (!cl.locnodes)
 	{
 		Con_Printf("No loc points/boxes exist!\n");
@@ -2195,7 +2196,7 @@ static void CL_Locs_Save_f(void)
 			break;
 	if (loc)
 	{
-		FS_Printf(outfile, "// %s %s saved by %s\n// x,y,z,x,y,z,\"name\"\n\n", locfilename, Sys_TimeString("%Y-%m-%d"), engineversion);
+		FS_Printf(outfile, "// %s %s saved by %s\n// x,y,z,x,y,z,\"name\"\n\n", locfilename, Sys_TimeString("%Y-%m-%d", timestr, sizeof(timestr)), engineversion);
 		for (loc = cl.locnodes;loc;loc = loc->next)
 			if (VectorCompare(loc->mins, loc->maxs))
 				break;
@@ -2449,6 +2450,7 @@ void CL_Init (void)
 	Cmd_AddCommand ("record", CL_Record_f, "record a demo");
 	Cmd_AddCommand ("stop", CL_Stop_f, "stop recording or playing a demo");
 	Cmd_AddCommand ("playdemo", CL_PlayDemo_f, "watch a demo file");
+	Cmd_AddCommand ("rewind", CL_RewindDemo_f, "rewind a demo");
 	Cmd_AddCommand ("timedemo", CL_TimeDemo_f, "play back a demo as fast as possible and save statistics to benchmark.log");
 
 	// Support Client-side Model Index List

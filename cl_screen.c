@@ -66,6 +66,7 @@ cvar_t scr_screenshot_timestamp = {CVAR_SAVE, "scr_screenshot_timestamp", "1", "
 // scr_screenshot_name is defined in fs.c
 #ifdef CONFIG_VIDEO_CAPTURE
 cvar_t cl_capturevideo = {0, "cl_capturevideo", "0", "enables saving of video to a .avi file using uncompressed I420 colorspace and PCM audio, note that scr_screenshot_gammaboost affects the brightness of the output)"};
+cvar_t cl_capturevideo_game_only = {0, "cl_capturevideo_game_only", "0", "capture only game screen (without menu, console, etc)"};
 cvar_t cl_capturevideo_demo_stop = {CVAR_SAVE, "cl_capturevideo_demo_stop", "1", "automatically stops video recording when demo ends"};
 cvar_t cl_capturevideo_printfps = {CVAR_SAVE, "cl_capturevideo_printfps", "1", "prints the frames per second captured in capturevideo (is only written to the log file, not to the console, as that would be visible on the video)"};
 cvar_t cl_capturevideo_width = {CVAR_SAVE, "cl_capturevideo_width", "0", "scales all frames to this resolution before saving the video"};
@@ -112,6 +113,7 @@ cvar_t r_speeds_graph_width = {CVAR_SAVE, "r_speeds_graph_width", "256", "size o
 cvar_t r_speeds_graph_height = {CVAR_SAVE, "r_speeds_graph_height", "128", "size of graph"};
 cvar_t r_speeds_graph_maxtimedelta = {CVAR_SAVE, "r_speeds_graph_maxtimedelta", "16667", "maximum timedelta to display in the graph (this value will be the top line)"};
 cvar_t r_speeds_graph_maxdefault = {CVAR_SAVE, "r_speeds_graph_maxdefault", "100", "if the minimum and maximum observed values are closer than this, use this value as the graph range (keeps small numbers from being big graphs)"};
+cvar_t menu_no_hide_chat = {0, "menu_no_hide_chat", "0", "show notify and chat messages when menu is active"};
 
 
 
@@ -1379,6 +1381,7 @@ void CL_Screen_Init(void)
 	Cvar_RegisterVariable (&scr_screenshot_timestamp);
 #ifdef CONFIG_VIDEO_CAPTURE
 	Cvar_RegisterVariable (&cl_capturevideo);
+	Cvar_RegisterVariable (&cl_capturevideo_game_only);
 	Cvar_RegisterVariable (&cl_capturevideo_demo_stop);
 	Cvar_RegisterVariable (&cl_capturevideo_printfps);
 	Cvar_RegisterVariable (&cl_capturevideo_width);
@@ -1415,6 +1418,7 @@ void CL_Screen_Init(void)
 	Cvar_RegisterVariable(&r_speeds_graph_height);
 	Cvar_RegisterVariable(&r_speeds_graph_maxtimedelta);
 	Cvar_RegisterVariable(&r_speeds_graph_maxdefault);
+	Cvar_RegisterVariable(&menu_no_hide_chat);
 
 	// if we want no console, turn it off here too
 	if (COM_CheckParm ("-noconsole"))
@@ -1488,9 +1492,9 @@ void SCR_ScreenShot_f (void)
 		// TODO maybe make capturevideo and screenshot use similar name patterns?
 		Cvar_LockThreadMutex();
 		if (scr_screenshot_name_in_mapdir.integer && cl.worldbasename[0])
-			dpsnprintf(prefix_name, sizeof(prefix_name), "%s/%s%s", cl.worldbasename, scr_screenshot_name.string, Sys_TimeString("%Y%m%d%H%M%S"));
+			dpsnprintf(prefix_name, sizeof(prefix_name), "%s/%s%s", cl.worldbasename, scr_screenshot_name.string, Sys_TimeString("%Y%m%d%H%M%S", vabuf, sizeof(vabuf)));
 		else
-			dpsnprintf(prefix_name, sizeof(prefix_name), "%s%s", scr_screenshot_name.string, Sys_TimeString("%Y%m%d%H%M%S"));
+			dpsnprintf(prefix_name, sizeof(prefix_name), "%s%s", scr_screenshot_name.string, Sys_TimeString("%Y%m%d%H%M%S", vabuf, sizeof(vabuf)));
 		Cvar_UnlockThreadMutex();
 		// find a file name to save it to
 		for (shotnumber100 = 0;shotnumber100 < 100;shotnumber100++)
@@ -1511,9 +1515,9 @@ void SCR_ScreenShot_f (void)
 		// TODO maybe make capturevideo and screenshot use similar name patterns?
 		Cvar_LockThreadMutex();
 		if (scr_screenshot_name_in_mapdir.integer && cl.worldbasename[0])
-			dpsnprintf(prefix_name, sizeof(prefix_name), "%s/%s", cl.worldbasename, Sys_TimeString(scr_screenshot_name.string));
+			dpsnprintf(prefix_name, sizeof(prefix_name), "%s/%s", cl.worldbasename, Sys_TimeString(scr_screenshot_name.string, vabuf, sizeof(vabuf)));
 		else
-			dpsnprintf(prefix_name, sizeof(prefix_name), "%s", Sys_TimeString(scr_screenshot_name.string));
+			dpsnprintf(prefix_name, sizeof(prefix_name), "%s", Sys_TimeString(scr_screenshot_name.string, vabuf, sizeof(vabuf)));
 		Cvar_UnlockThreadMutex();
 		// if prefix changed, gamedir or map changed, reset the shotnumber so
 		// we scan again
@@ -1569,6 +1573,7 @@ static void SCR_CaptureVideo_BeginVideo(void)
 	double r, g, b;
 	unsigned int i;
 	int width = cl_capturevideo_width.integer, height = cl_capturevideo_height.integer;
+	char timestr[128];
 	if (cls.capturevideo.active)
 		return;
 	memset(&cls.capturevideo, 0, sizeof(cls.capturevideo));
@@ -1610,7 +1615,7 @@ static void SCR_CaptureVideo_BeginVideo(void)
 	cls.capturevideo.screenbuffer = (unsigned char *)Mem_Alloc(tempmempool, vid.width * vid.height * 4);
 	cls.capturevideo.outbuffer = (unsigned char *)Mem_Alloc(tempmempool, width * height * (4+4) + 18);
 	Cvar_LockThreadMutex();
-	dpsnprintf(cls.capturevideo.basename, sizeof(cls.capturevideo.basename), "video/%s%03i", Sys_TimeString(cl_capturevideo_nameformat.string), cl_capturevideo_number.integer);
+	dpsnprintf(cls.capturevideo.basename, sizeof(cls.capturevideo.basename), "video/%s%03i", Sys_TimeString(cl_capturevideo_nameformat.string, timestr, sizeof(timestr)), cl_capturevideo_number.integer);
 	Cvar_UnlockThreadMutex();
 	Cvar_SetValueQuick(&cl_capturevideo_number, cl_capturevideo_number.integer + 1);
 
@@ -1916,7 +1921,6 @@ static void R_Envmap_f (void)
 	r_refdef.view.height = size;
 	r_refdef.view.depth = 1;
 	r_refdef.view.useperspective = true;
-	r_refdef.view.isoverlay = false;
 
 	r_refdef.view.frustum_x = 1; // tan(45 * M_PI / 180.0);
 	r_refdef.view.frustum_y = 1; // tan(45 * M_PI / 180.0);
@@ -2238,7 +2242,7 @@ static void SCR_DrawScreen (void)
 
 	// draw 2D stuff
 	if(!scr_con_current && !(key_consoleactive & KEY_CONSOLEACTIVE_FORCED))
-		if ((key_dest == key_game || key_dest == key_message) && !r_letterbox.value)
+		if ((key_dest == key_game || key_dest == key_message || (key_dest == key_menu && menu_no_hide_chat.integer)) && !r_letterbox.value)
 			Con_DrawNotify ();	// only draw notify in game
 
 	if (cls.signon == SIGNONS)
@@ -2252,6 +2256,10 @@ static void SCR_DrawScreen (void)
 		SCR_CheckDrawCenterString();
 	}
 	SCR_DrawNetGraph ();
+#ifdef CONFIG_VIDEO_CAPTURE
+	if (cl_capturevideo_game_only.integer && !R_Stereo_Active())
+		SCR_CaptureVideo();
+#endif
 #ifdef CONFIG_MENU
 	MR_Draw();
 #endif
@@ -2870,7 +2878,6 @@ void CL_UpdateScreen(void)
 
 	R_ClearScreen(false);
 	r_refdef.view.clear = false;
-	r_refdef.view.isoverlay = false;
 
 	// calculate r_refdef.view.quality
 	r_refdef.view.quality = cl_updatescreen_quality;
@@ -2945,7 +2952,8 @@ void CL_UpdateScreen(void)
 	}
 
 #ifdef CONFIG_VIDEO_CAPTURE
-	SCR_CaptureVideo();
+	if (!cl_capturevideo_game_only.integer || R_Stereo_Active())
+		SCR_CaptureVideo();
 #endif
 
 	if (qglFlush)
@@ -2957,14 +2965,16 @@ void CL_UpdateScreen(void)
 		VID_SetMouse(vid.fullscreen, false, false);
 	else
 	{
-		qboolean usetouch = (vid_touchscreen.integer && vid_touchscreen_mouse.integer);
+		qboolean hidecursor = !(vid_touchscreen.integer && vid_touchscreen_mouse.integer);
 		if (key_dest == key_menu_grabbed)
-			VID_SetMouse(true, vid_mouse.integer && !in_client_mouse && !usetouch, !usetouch);
+			VID_SetMouse(true, vid_mouse.integer && !in_client_mouse && hidecursor, hidecursor);
 		else if (key_dest == key_menu)
-			VID_SetMouse(vid.fullscreen, vid_mouse.integer && !in_client_mouse && !usetouch, !usetouch);
+			VID_SetMouse(vid.fullscreen, vid_mouse.integer && !in_client_mouse && hidecursor, hidecursor);
 		else {
-			qboolean usetouchactive = (usetouch && vid_touchscreen_active.integer);
-			VID_SetMouse(vid.fullscreen, vid_mouse.integer && !cl.csqc_wantsmousemove && cl_prydoncursor.integer <= 0 && (!cls.demoplayback || cl_demo_mousegrab.integer) && !usetouchactive, !usetouchactive);
+			VID_SetMouse(vid.fullscreen,
+					vid_mouse.integer && !cl.csqc_wantsmousemove && cl_prydoncursor.integer <= 0
+					&& (!cls.demoplayback || cl_demo_mousegrab.integer) && hidecursor,
+					hidecursor);
 		}
 	}
 

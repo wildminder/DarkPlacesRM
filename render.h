@@ -33,7 +33,6 @@ void FOG_clear(void);
 extern cvar_t r_sky;
 extern cvar_t r_skyscroll1;
 extern cvar_t r_skyscroll2;
-extern int skyrenderlater, skyrendermasked;
 int R_SetSkyBox(const char *sky);
 void R_SkyStartFrame(void);
 void R_Sky(void);
@@ -148,7 +147,7 @@ skinframe_t *R_SkinFrame_LoadMissing(void);
 
 rtexture_t *R_GetCubemap(const char *basename);
 
-void R_View_WorldVisibility(qboolean forcenovis);
+void R_View_WorldVisibility(void);
 void R_DrawDecals(void);
 void R_DrawParticles(void);
 void R_DrawExplosions(void);
@@ -503,11 +502,11 @@ typedef struct r_waterstate_waterplane_s
 	int fbo_reflection;
 	int fbo_camera;
 	mplane_t plane;
-	int materialflags; // combined flags of all water surfaces on this plane
 	unsigned char *pvsbits;
 	qboolean pvsvalid;
 	int camera_entity;
 	vec3_t mins, maxs;
+	texture_t *texture;
 }
 r_waterstate_waterplane_t;
 
@@ -529,6 +528,7 @@ typedef struct r_waterstate_s
 
 	qboolean renderingscene; // true while rendering a refraction or reflection texture, disables water surfaces
 	qboolean hideplayer;
+	double pause; //temporaly disable water surfaces
 }
 r_waterstate_t;
 

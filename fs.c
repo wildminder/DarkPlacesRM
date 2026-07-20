@@ -991,13 +991,14 @@ static qboolean FS_AddPack_Fullpath(const char *pakfile, const char *shortname, 
 
 	if(pak)
 	{
+		searchpath_t *insertion_point = NULL;
+		qboolean isoverrides = !strncmp(FS_FileWithoutPath(pak->filename), "_overrides", 10);
 		strlcpy(pak->shortname, shortname, sizeof(pak->shortname));
 
 		//Con_DPrintf("  Registered pack with short name %s\n", shortname);
 		if(keep_plain_dirs)
 		{
 			// find the first item whose next one is a pack or NULL
-			searchpath_t *insertion_point = 0;
 			if(fs_searchpaths && !fs_searchpaths->pack)
 			{
 				insertion_point = fs_searchpaths;
@@ -1005,7 +1006,9 @@ static qboolean FS_AddPack_Fullpath(const char *pakfile, const char *shortname, 
 				{
 					if(!insertion_point->next)
 						break;
-					if(insertion_point->next->pack)
+					if(insertion_point->next->pack &&
+							(strncmp(FS_FileWithoutPath(insertion_point->next->pack->filename), "_overrides", 10)
+							|| isoverrides))
 						break;
 					insertion_point = insertion_point->next;
 				}
@@ -1030,8 +1033,23 @@ static qboolean FS_AddPack_Fullpath(const char *pakfile, const char *shortname, 
 		else
 		{
 			search = (searchpath_t *)Mem_Alloc(fs_mempool, sizeof(searchpath_t));
-			search->next = fs_searchpaths;
-			fs_searchpaths = search;
+			if (fs_searchpaths && fs_searchpaths->pack
+					&& !strncmp(FS_FileWithoutPath(fs_searchpaths->pack->filename), "_overrides", 10)
+					&& !isoverrides)
+			{
+				insertion_point = fs_searchpaths;
+				while (insertion_point->next && insertion_point->next->pack && !strncmp(insertion_point->next->pack->filename, "_overrides", 10))
+				{
+					insertion_point = insertion_point->next;
+				}
+				search->next = insertion_point->next;
+				insertion_point->next = search;
+			}
+			else
+			{
+				search->next = fs_searchpaths;
+				fs_searchpaths = search;
+			}
 		}
 		search->pack = pak;
 		if(pak->vpack)
@@ -1188,7 +1206,7 @@ static void FS_AddGameHierarchy (const char *dir)
 	char extradirarg[12];
 	char fs_extradir[MAX_OSPATH];
 	// Add the common game directory
-	FS_AddBaseDirectory (va(vabuf, sizeof(vabuf), "%s/", fs_basedir));
+	FS_AddBaseDirectory (fs_basedir);
 	FS_AddGameDirectory (va(vabuf, sizeof(vabuf), "%s%s/", fs_basedir, dir));
 	if (!fs_basesearchpath)
 		fs_basesearchpath = fs_searchpaths;
@@ -1424,6 +1442,7 @@ qboolean FS_ChangeGameDirs(int numgamedirs, char gamedirs[][MAX_QPATH], qboolean
 {
 	int i;
 	const char *p;
+	char infobuf[1024];
 
 	if (fs_numgamedirs == numgamedirs)
 	{
@@ -1444,7 +1463,7 @@ qboolean FS_ChangeGameDirs(int numgamedirs, char gamedirs[][MAX_QPATH], qboolean
 	for (i = 0;i < numgamedirs;i++)
 	{
 		// if string is nasty, reject it
-		p = FS_CheckGameDir(gamedirs[i]);
+		p = FS_CheckGameDir(gamedirs[i], infobuf, sizeof(infobuf));
 		if(!p)
 		{
 			if (complain)
@@ -1534,7 +1553,7 @@ static const char *FS_SysCheckGameDir(const char *gamedir, char *buf, size_t buf
 	qfile_t *f;
 	stringlist_t list;
 	fs_offset_t n;
-	char vabuf[1024];
+	char vabuf[MAX_OSPATH];
 
 	stringlistinit(&list);
 	listdirectory(&list, gamedir, "");
@@ -1566,22 +1585,20 @@ static const char *FS_SysCheckGameDir(const char *gamedir, char *buf, size_t buf
 FS_CheckGameDir
 ================
 */
-const char *FS_CheckGameDir(const char *gamedir)
+const char *FS_CheckGameDir(const char *gamedir, char *buf, int buflen)
 {
 	const char *ret;
-	static char buf[8192];
-	char vabuf[1024];
+	char vabuf[MAX_OSPATH];
 
 	if (FS_CheckNastyPath(gamedir, true))
 		return NULL;
-
-	ret = FS_SysCheckGameDir(va(vabuf, sizeof(vabuf), "%s%s/", fs_userdir, gamedir), buf, sizeof(buf));
+	ret = FS_SysCheckGameDir(va(vabuf, sizeof(vabuf), "%s%s/", fs_userdir, gamedir), buf, buflen);
 	if(ret)
 	{
 		if(!*ret)
 		{
 			// get description from basedir
-			ret = FS_SysCheckGameDir(va(vabuf, sizeof(vabuf), "%s%s/", fs_basedir, gamedir), buf, sizeof(buf));
+			ret = FS_SysCheckGameDir(va(vabuf, sizeof(vabuf), "%s%s/", fs_basedir, gamedir), buf, buflen);
 			if(ret)
 				return ret;
 			return "";
@@ -1589,7 +1606,7 @@ const char *FS_CheckGameDir(const char *gamedir)
 		return ret;
 	}
 
-	ret = FS_SysCheckGameDir(va(vabuf, sizeof(vabuf), "%s%s/", fs_basedir, gamedir), buf, sizeof(buf));
+	ret = FS_SysCheckGameDir(va(vabuf, sizeof(vabuf), "%s%s/", fs_basedir, gamedir), buf, buflen);
 	if(ret)
 		return ret;
 	
@@ -1601,15 +1618,15 @@ static void FS_ListGameDirs(void)
 	stringlist_t list, list2;
 	int i;
 	const char *info;
-	char vabuf[1024];
+	char infobuf[1024];
 
 	fs_all_gamedirs_count = 0;
 	if(fs_all_gamedirs)
 		Mem_Free(fs_all_gamedirs);
 
 	stringlistinit(&list);
-	listdirectory(&list, va(vabuf, sizeof(vabuf), "%s/", fs_basedir), "");
-	listdirectory(&list, va(vabuf, sizeof(vabuf), "%s/", fs_userdir), "");
+	listdirectory(&list, fs_basedir, "");
+	listdirectory(&list, fs_userdir, "");
 	stringlistsort(&list, false);
 
 	stringlistinit(&list2);
@@ -1618,7 +1635,7 @@ static void FS_ListGameDirs(void)
 		if(i)
 			if(!strcmp(list.strings[i-1], list.strings[i]))
 				continue;
-		info = FS_CheckGameDir(list.strings[i]);
+		info = FS_CheckGameDir(list.strings[i], infobuf, sizeof(infobuf));
 		if(!info)
 			continue;
 		if(info == fs_checkgamedir_missing)
@@ -1632,7 +1649,7 @@ static void FS_ListGameDirs(void)
 	fs_all_gamedirs = (gamedir_t *)Mem_Alloc(fs_mempool, list2.numstrings * sizeof(*fs_all_gamedirs));
 	for(i = 0; i < list2.numstrings; ++i)
 	{
-		info = FS_CheckGameDir(list2.strings[i]);
+		info = FS_CheckGameDir(list2.strings[i], infobuf, sizeof(infobuf));
 		// all this cannot happen any more, but better be safe than sorry
 		if(!info)
 			continue;
@@ -1644,6 +1661,7 @@ static void FS_ListGameDirs(void)
 		strlcpy(fs_all_gamedirs[fs_all_gamedirs_count].description, info, sizeof(fs_all_gamedirs[fs_all_gamedirs_count].description));
 		++fs_all_gamedirs_count;
 	}
+	stringlistfreecontents(&list2);
 }
 
 /*
@@ -1702,9 +1720,11 @@ void FS_Init_SelfPack (void)
 	if (!COM_CheckParm("-noopt"))
 	{
 		char *buf = (char *) FS_SysLoadFile("darkplaces.opt", tempmempool, true, NULL);
-		if(buf)
+		if (buf)
+		{
 			COM_InsertFlags(buf);
-		Mem_Free(buf);
+			Mem_Free(buf);
+		}
 	}
 
 #ifndef USE_RWOPS
@@ -1893,6 +1913,7 @@ FS_Init
 void FS_Init (void)
 {
 	const char *p;
+	char infobuf[1024];
 	int i;
 #ifdef WIN32
 	unsigned int r;
@@ -2064,13 +2085,13 @@ void FS_Init (void)
     
 	FS_ListGameDirs();
 
-	p = FS_CheckGameDir(gamedirname1);
+	p = FS_CheckGameDir(gamedirname1, infobuf, sizeof(infobuf));
 	if(!p || p == fs_checkgamedir_missing)
 		Con_Printf("WARNING: base gamedir %s%s/ not found!\n", fs_basedir, gamedirname1);
 
 	if(gamedirname2)
 	{
-		p = FS_CheckGameDir(gamedirname2);
+		p = FS_CheckGameDir(gamedirname2, infobuf, sizeof(infobuf));
 		if(!p || p == fs_checkgamedir_missing)
 			Con_Printf("WARNING: base gamedir %s%s/ not found!\n", fs_basedir, gamedirname2);
 	}
@@ -2085,7 +2106,7 @@ void FS_Init (void)
 		if (!strcmp (com_argv[i], "-game") && i < com_argc-1)
 		{
 			i++;
-			p = FS_CheckGameDir(com_argv[i]);
+			p = FS_CheckGameDir(com_argv[i], infobuf, sizeof(infobuf));
 			if(!p)
 				Sys_Error("Nasty -game name rejected: %s", com_argv[i]);
 			if(p == fs_checkgamedir_missing)
@@ -2661,7 +2682,10 @@ qfile_t* FS_OpenRealFile (const char* filepath, const char* mode, qboolean quiet
 		return NULL;
 	}
 
-	dpsnprintf (real_path, sizeof (real_path), "%s/%s", fs_gamedir, filepath); // this is never a vpack
+	if (fs_gamedir[strlen(fs_gamedir) - 1] == '/')
+		dpsnprintf (real_path, sizeof (real_path), "%s%s", fs_gamedir, filepath); // this is never a vpack
+	else
+		dpsnprintf (real_path, sizeof (real_path), "%s/%s", fs_gamedir, filepath); // this is never a vpack
 
 	// If the file is opened in "write", "append", or "read/write" mode,
 	// create directories up to the file.
@@ -3543,7 +3567,6 @@ fssearch_t *FS_Search(const char *pattern, int caseinsensitive, int quiet)
 	pack_t *pak;
 	int i, basepathlength, numfiles, numchars, resultlistindex, dirlistindex;
 	stringlist_t resultlist;
-	stringlist_t dirlist;
 	const char *slash, *backslash, *colon, *separator;
 	char *basepath;
 
@@ -3557,7 +3580,6 @@ fssearch_t *FS_Search(const char *pattern, int caseinsensitive, int quiet)
 	}
 
 	stringlistinit(&resultlist);
-	stringlistinit(&dirlist);
 	search = NULL;
 	slash = strrchr(pattern, '/');
 	backslash = strrchr(pattern, '\\');

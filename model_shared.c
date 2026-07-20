@@ -1633,6 +1633,10 @@ void Mod_LoadQ3Shaders(void)
 			shader.specularscalemod = 1;
 			shader.specularpowermod = 1;
 			shader.rtlightambient = 0;
+			shader.fogcolor[0] = 1;
+			shader.fogcolor[1] = 1;
+			shader.fogcolor[2] = 1;
+			shader.fogdensity = 100;
 			// WHEN ADDING DEFAULTS HERE, REMEMBER TO PUT DEFAULTS IN ALL LOADERS
 			// JUST GREP FOR "specularscalemod = 1".
 
@@ -1929,7 +1933,7 @@ void Mod_LoadQ3Shaders(void)
 					#endif
 					if (!(shader.surfaceparms & Q3SURFACEPARM_NOMIPMAPS))
 						layer->texflags |= TEXF_MIPMAP;
-					if (!(shader.textureflags & Q3TEXTUREFLAG_NOPICMIP))
+					if (!(shader.textureflags & Q3TEXTUREFLAG_NOPICMIP) && !(shader.surfaceparms & Q3SURFACEPARM_SKY))
 						layer->texflags |= TEXF_PICMIP | TEXF_COMPRESS;
 					if (layer->clampmap)
 						layer->texflags |= TEXF_CLAMP;
@@ -2125,6 +2129,25 @@ void Mod_LoadQ3Shaders(void)
 					shader.surfaceparms |= Q3SURFACEPARM_SKY;
 					if (!atoi(parameter[1]) && strcasecmp(parameter[1], "-"))
 						strlcpy(shader.skyboxname, parameter[1], sizeof(shader.skyboxname));
+				}
+				else if (!strcasecmp(parameter[0], "fogparms"))
+				{
+					if (numparameters >= 6 && !strcmp("(", parameter[1]) && !strcmp(")", parameter[5]))
+					{
+						shader.fogcolor[0] = atof(parameter[2]);
+						shader.fogcolor[1] = atof(parameter[3]);
+						shader.fogcolor[2] = atof(parameter[4]);
+						if (numparameters > 5)
+							shader.fogdensity = atof(parameter[6]);
+					}
+					else if (numparameters >= 4)
+					{
+						shader.fogcolor[0] = atof(parameter[1]);
+						shader.fogcolor[1] = atof(parameter[2]);
+						shader.fogcolor[2] = atof(parameter[3]);
+						if (numparameters >= 5)
+							shader.fogdensity = atof(parameter[4]);
+					}
 				}
 				else if (!strcasecmp(parameter[0], "cull") && numparameters >= 2)
 				{
@@ -2405,7 +2428,7 @@ qboolean Mod_LoadTextureFromQ3Shader(dp_model_t *loadmodel, texture_t *texture, 
 				dpsnprintf(loadmodel->brush.skybox, sizeof(loadmodel->brush.skybox), "%s_", shader->skyboxname);
 			}
 		}
-		else if ((texture->surfaceflags & Q3SURFACEFLAG_NODRAW) || shader->numlayers == 0)
+		else if ((texture->surfaceflags & Q3SURFACEFLAG_NODRAW) || (shader->numlayers == 0 && !(shader->surfaceparms & Q3SURFACEPARM_FOG)))
 			texture->basematerialflags = MATERIALFLAG_NODRAW | MATERIALFLAG_NOSHADOW;
 		else
 			texture->basematerialflags = MATERIALFLAG_WALL;
@@ -2423,6 +2446,14 @@ qboolean Mod_LoadTextureFromQ3Shader(dp_model_t *loadmodel, texture_t *texture, 
 			texture->basematerialflags |= MATERIALFLAG_REFRACTION;
 		if (shader->textureflags & Q3TEXTUREFLAG_REFLECTION)
 			texture->basematerialflags |= MATERIALFLAG_REFLECTION;
+		if (shader->surfaceparms & Q3SURFACEPARM_FOG)
+		{
+			texture->basematerialflags |= MATERIALFLAG_FOG | MATERIALFLAG_BLENDED;
+			texture->fogcolor[0] = shader->fogcolor[0];
+			texture->fogcolor[1] = shader->fogcolor[1];
+			texture->fogcolor[2] = shader->fogcolor[2];
+			texture->fogdensity = shader->fogdensity;
+		}
 		if (shader->textureflags & Q3TEXTUREFLAG_WATERSHADER)
 			texture->basematerialflags |= MATERIALFLAG_WATERSHADER;
 		if (shader->textureflags & Q3TEXTUREFLAG_CAMERA)
@@ -2515,9 +2546,18 @@ nothing                GL_ZERO GL_ONE
 			else if (lightmaplayer >= 1)
 			{
 				// ordinary texture - we don't properly apply lighting to the prelayers, but oh well...
-				endofprelayers = lightmaplayer - 1;
-				materiallayer = lightmaplayer - 1;
-				firstpostlayer = lightmaplayer + 1;
+				if (shader->layers[lightmaplayer - 1].texturename && strcasecmp(shader->layers[lightmaplayer - 1].texturename[0], "$lightmap"))
+				{
+					endofprelayers = lightmaplayer - 1;
+					materiallayer = lightmaplayer - 1;
+					firstpostlayer = lightmaplayer + 1;
+				}
+				else
+				{
+					endofprelayers = lightmaplayer;
+					materiallayer = lightmaplayer + 1;
+					firstpostlayer = lightmaplayer + 2;
+				}
 			}
 			else if (rgbgenvertexlayer >= 0)
 			{
